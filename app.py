@@ -9,8 +9,7 @@ import time
 # --- CONFIGURACIÓN PARA MÓVIL (ICONO CALCULADORA) ---
 st.set_page_config(page_title="Lector de Lotes", page_icon="🧮", layout="wide")
 
-st.title("🧮 Lector de Lotes (Unificado)")
-st.info("ℹ️ Ahora un mismo lote no puede aparecer en dos categorías distintas.")
+st.title("🧮 Lector de Lotes")
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -223,3 +222,4 @@ if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True,
             
             csv = resumen_lotes.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Descargar CSV", csv, "produccion_real.csv", "text/csv", use_container_width=True)
+
