@@ -10,11 +10,21 @@ import time
 st.set_page_config(page_title="Lector de Lotes", page_icon="🧮", layout="wide")
 
 st.title("🧮 Lector de Lotes")
+st.markdown("Sube tus fotos o hazlas directamente con el botón de abajo 👇")
 
-# --- BARRA LATERAL ---
-with st.sidebar:
-    st.header("Configuración")
-    api_key = st.text_input("Pega aquí tu Google API Key", type="password")
+# --- GESTIÓN DE LA CLAVE (AUTOMÁTICA) ---
+api_key = None
+
+# 1. Intentamos leerla de los Secretos (Nube)
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    
+# 2. Si no está en secretos, mostramos la barra lateral para ponerla manual
+else:
+    with st.sidebar:
+        st.header("Configuración")
+        api_key = st.text_input("Pega tu API Key", type="password")
+        st.warning("💡 Consejo: Configura los 'Secrets' en Streamlit Cloud para no tener que pegar esto siempre.")
 
 # --- FUNCIONES (LÓGICA INTERNA) ---
 def conseguir_modelos_robustos():
@@ -103,15 +113,14 @@ def categorizar_fila_inicial(fila):
     if lote.startswith("A"): return "VIAL"
     return "OTRO"
 
-# --- INTERFAZ SIMPLIFICADA (SOLO EL BOTÓN QUE QUERÍAS) ---
+# --- INTERFAZ SIMPLIFICADA ---
 
-# Este es el botón "Browse files" de tu foto. 
-# En el móvil, al pulsarlo, el sistema te preguntará: "¿Cámara o Archivos?" automáticamente.
 archivos_subidos = st.file_uploader("Cargar hoja de producción", type=['jpg','png','jpeg','webp'], accept_multiple_files=True, label_visibility="collapsed")
 
 if archivos_subidos and st.button("🚀 CALCULAR AHORA", type="primary", use_container_width=True):
+    # Verificación de seguridad
     if not api_key:
-        st.error("⚠️ Falta API Key (Ponla en el menú de la izquierda)")
+        st.error("⚠️ Error: No se ha detectado la API Key. Configúrala en 'Settings > Secrets' o introdúcela en el menú lateral.")
     else:
         todos_los_datos = []
         barra = st.progress(0)
