@@ -6,7 +6,7 @@ from io import StringIO
 import re
 import time
 
-# --- CONFIGURACIÓN PARA MÓVIL (ICONO CALCULADORA) ---
+# --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Lector de Lotes", page_icon="🧮", layout="wide")
 
 st.title("🧮 Lector de Lotes")
@@ -92,55 +92,61 @@ def limpiar_csv(texto):
     if not texto: return ""
     return re.sub(r"```csv|```", "", texto).strip()
 
-# --- LIMPIEZA NUMÉRICA (PUNTOS DE MILES) ---
+# --- LIMPIEZA NUMÉRICA ---
 def limpiar_num(v):
     try:
         v = str(v).replace("'", "").strip()
-        # Si hay punto y 3 cifras detrás (29.000), es mil.
         if re.search(r'\d+\.\d{3}', v):
             v = v.replace(".", "") 
-        v = v.replace(",", ".") # Comas a puntos decimales
+        v = v.replace(",", ".") 
         return float(v)
     except:
         return 0.0
 
-# --- CATEGORIZACIÓN INICIAL (Fila a Fila) ---
+# --- CATEGORIZACIÓN INICIAL ---
 def categorizar_fila_inicial(fila):
     proveedor = str(fila['Proveedor']).lower()
     material = str(fila['MaterialOriginal']).lower()
     lote = str(fila['Lote']).upper().strip()
     
-    # Prioridad al texto leído por la IA
     if "tapon" in material or "tapón" in material or "negro" in material: return "TAPON"
     if "vial" in material or "ambar" in material: return "VIAL"
     if "pild" in material or "frasco" in material: return "PILDORERO"
     if "tapa" in material: return "TAPA"
 
-    # Reglas secundarias de proveedor
     if "punto" in proveedor or "pack" in proveedor:
         if lote.startswith("P"): return "TAPON"
         if lote.startswith("A"): return "VIAL"
         return "TAPON"
     elif "heis" in proveedor: return "TAPA"
         
-    # Último recurso: prefijo
     if lote.startswith("P"): return "TAPON"
     if lote.startswith("A"): return "VIAL"
     return "OTRO"
 
-# --- INTERFAZ ---
-col1, col2 = st.columns(2)
-with col1:
-    st.write("📸 **Cámara**")
-    foto_camara = st.camera_input("Toma foto", label_visibility="collapsed")
-with col2:
-    st.write("📂 **Galería**")
-    archivos_subidos = st.file_uploader("Sube fotos", type=['jpg','png','jpeg','webp'], accept_multiple_files=True, label_visibility="collapsed")
+# --- INTERFAZ (MODIFICADA: SELECTOR CÁMARA/GALERÍA) ---
+
+# Selector tipo "Radio Button" horizontal
+modo_entrada = st.radio(
+    "¿Cómo quieres subir las imágenes?",
+    ["📸 Usar Cámara", "📂 Subir desde Galería"],
+    horizontal=True
+)
 
 lista_imagenes = []
-if foto_camara: lista_imagenes.append(foto_camara)
-if archivos_subidos: lista_imagenes.extend(archivos_subidos)
 
+# Lógica condicional: Mostramos uno u otro según lo que elijas
+if modo_entrada == "📸 Usar Cámara":
+    foto_camara = st.camera_input("Haz una foto", label_visibility="collapsed")
+    if foto_camara:
+        lista_imagenes.append(foto_camara)
+
+elif modo_entrada == "📂 Subir desde Galería":
+    archivos_subidos = st.file_uploader("Elige las fotos", type=['jpg','png','jpeg','webp'], accept_multiple_files=True)
+    if archivos_subidos:
+        lista_imagenes.extend(archivos_subidos)
+
+# --- BOTÓN DE PROCESAR ---
 if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True, type="primary"):
     if not api_key:
         st.error("⚠️ Falta API Key")
@@ -164,10 +170,9 @@ if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True,
                     if len(df.columns) >= 4:
                         df.columns = ['Proveedor', 'MaterialOriginal', 'Lote', 'Cantidad'] + list(df.columns[4:])
                         df['Cantidad_Num'] = df['Cantidad'].apply(limpiar_num)
-                        # 1. Categorización inicial (puede tener errores)
+                        
                         df['CATEGORIA'] = df.apply(categorizar_fila_inicial, axis=1)
                         
-                        # Corrección visual lote A->P si se detectó como tapón
                         def corregir_lote_visual(row):
                             l = str(row['Lote']).strip().upper()
                             if row['CATEGORIA'] == 'TAPON' and l.startswith('A'): return 'P' + l[1:]
@@ -187,24 +192,18 @@ if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True,
         barra.empty()
         
         if todos_los_datos:
-            # Juntamos todos los datos de todas las fotos
             df_final = pd.concat(todos_los_datos)
             
-            # --- 🔥 EL ARREGLO FINAL: LA REGLA DE HIERRO DEL PREFIJO ---
-            # Antes de agrupar, forzamos la categoría según la letra inicial del lote.
-            # Esto corrige cualquier error de lectura de la IA en la descripción.
+            # --- 🔥 REGLA DE HIERRO DEL PREFIJO ---
             def imponer_categoria_por_prefijo(row):
                 lote_str = str(row['Lote']).strip().upper()
                 if lote_str.startswith('A'): return 'VIAL'
                 if lote_str.startswith('P'): return 'TAPON'
-                # Si no es A ni P (ej: Tapa Heis), mantenemos la categoría original
                 return row['CATEGORIA']
 
-            # Sobrescribimos la columna categoría con la regla inquebrantable
             df_final['CATEGORIA'] = df_final.apply(imponer_categoria_por_prefijo, axis=1)
-            # -----------------------------------------------------------
+            # -------------------------------------
             
-            # Totales (Ahora sí, sin duplicados)
             resumen_global = df_final.groupby(["CATEGORIA"])["Cantidad_Num"].sum().reset_index()
             resumen_global.columns = ["Material", "Total"]
             resumen_global['Total'] = resumen_global['Total'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
@@ -213,13 +212,12 @@ if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True,
             resumen_lotes.columns = ["Categoría", "Lote", "Total"]
             resumen_lotes['Total'] = resumen_lotes['Total'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
             
-            st.success("✅ ¡Cálculo Unificado y Corregido!")
-            st.subheader("📦 TOTALES REALES")
+            st.success("✅ ¡Cálculo Completado!")
+            st.subheader("📦 TOTALES")
             st.dataframe(resumen_global, use_container_width=True)
             
-            st.subheader("📋 DESGLOSE (Sin lotes repetidos)")
+            st.subheader("📋 DESGLOSE")
             st.dataframe(resumen_lotes, use_container_width=True)
             
             csv = resumen_lotes.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Descargar CSV", csv, "produccion_real.csv", "text/csv", use_container_width=True)
-
