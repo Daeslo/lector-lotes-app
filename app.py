@@ -16,14 +16,10 @@ with st.sidebar:
     st.header("Configuración")
     api_key = st.text_input("Pega aquí tu Google API Key", type="password")
 
-# --- MODELOS ---
+# --- FUNCIONES (LÓGICA INTERNA) ---
 def conseguir_modelos_robustos():
-    return [
-        'gemini-2.5-flash',       
-        'gemini-2.0-flash-exp'
-    ]
+    return ['gemini-2.5-flash', 'gemini-2.0-flash-exp']
 
-# --- COMPRESIÓN ---
 def comprimir_imagen(imagen_pil):
     ancho_maximo = 1024 
     if imagen_pil.width > ancho_maximo:
@@ -32,7 +28,6 @@ def comprimir_imagen(imagen_pil):
         return imagen_pil.resize((ancho_maximo, altura))
     return imagen_pil
 
-# --- ESPERA VISUAL ---
 def esperar_cuenta_atras(segundos, modelo):
     barra = st.progress(0)
     contenedor = st.empty()
@@ -44,30 +39,22 @@ def esperar_cuenta_atras(segundos, modelo):
     contenedor.empty()
     barra.empty()
 
-# --- ANÁLISIS ---
 def analizar_con_gemini(imagen_pil, key):
     genai.configure(api_key=key)
     lista_modelos = conseguir_modelos_robustos()
     imagen_optimizada = comprimir_imagen(imagen_pil)
-    
     prompt = """
     Analiza esta hoja de producción manuscrita.
     Extrae tabla con 4 columnas EXACTAS separadas por '|'.
     FORMATO: Proveedor | MaterialOriginal | Lote | Cantidad
-    
-    REGLAS CRÍTICAS:
-    1. Cantidad: Columna 'Uds. Usadas'. Copia el número TAL CUAL lo ves (con puntos y comas).
-       - Ejemplo: Si ves "29.000", escribe "29.000".
-       - Ejemplo: Si ves "2.3", escribe "2.3".
+    REGLAS:
+    1. Cantidad: Columna 'Uds. Usadas'. Copia el número EXACTO (con puntos/comas).
     2. Lote: Copia el código alfanumérico.
     3. Material: Copia el texto.
     4. Rellena huecos: Si hay comillas o vacío, repite el valor de arriba.
-    
     Salida: SOLO los datos CSV.
     """
-
     errores_detallados = []
-    
     for nombre_modelo in lista_modelos:
         for intento in range(3): 
             try:
@@ -87,77 +74,52 @@ def analizar_con_gemini(imagen_pil, key):
                 break 
     raise Exception(f"Error: {errores_detallados}")
 
-# --- LIMPIEZA CSV ---
 def limpiar_csv(texto):
     if not texto: return ""
     return re.sub(r"```csv|```", "", texto).strip()
 
-# --- LIMPIEZA NUMÉRICA ---
 def limpiar_num(v):
     try:
         v = str(v).replace("'", "").strip()
-        if re.search(r'\d+\.\d{3}', v):
-            v = v.replace(".", "") 
+        if re.search(r'\d+\.\d{3}', v): v = v.replace(".", "") 
         v = v.replace(",", ".") 
         return float(v)
-    except:
-        return 0.0
+    except: return 0.0
 
-# --- CATEGORIZACIÓN INICIAL ---
 def categorizar_fila_inicial(fila):
     proveedor = str(fila['Proveedor']).lower()
     material = str(fila['MaterialOriginal']).lower()
     lote = str(fila['Lote']).upper().strip()
-    
     if "tapon" in material or "tapón" in material or "negro" in material: return "TAPON"
     if "vial" in material or "ambar" in material: return "VIAL"
     if "pild" in material or "frasco" in material: return "PILDORERO"
     if "tapa" in material: return "TAPA"
-
     if "punto" in proveedor or "pack" in proveedor:
         if lote.startswith("P"): return "TAPON"
         if lote.startswith("A"): return "VIAL"
         return "TAPON"
     elif "heis" in proveedor: return "TAPA"
-        
     if lote.startswith("P"): return "TAPON"
     if lote.startswith("A"): return "VIAL"
     return "OTRO"
 
-# --- INTERFAZ (MODIFICADA: SELECTOR CÁMARA/GALERÍA) ---
+# --- INTERFAZ SIMPLIFICADA (SOLO EL BOTÓN QUE QUERÍAS) ---
 
-# Selector tipo "Radio Button" horizontal
-modo_entrada = st.radio(
-    "¿Cómo quieres subir las imágenes?",
-    ["📸 Usar Cámara", "📂 Subir desde Galería"],
-    horizontal=True
-)
+# Este es el botón "Browse files" de tu foto. 
+# En el móvil, al pulsarlo, el sistema te preguntará: "¿Cámara o Archivos?" automáticamente.
+archivos_subidos = st.file_uploader("Cargar hoja de producción", type=['jpg','png','jpeg','webp'], accept_multiple_files=True, label_visibility="collapsed")
 
-lista_imagenes = []
-
-# Lógica condicional: Mostramos uno u otro según lo que elijas
-if modo_entrada == "📸 Usar Cámara":
-    foto_camara = st.camera_input("Haz una foto", label_visibility="collapsed")
-    if foto_camara:
-        lista_imagenes.append(foto_camara)
-
-elif modo_entrada == "📂 Subir desde Galería":
-    archivos_subidos = st.file_uploader("Elige las fotos", type=['jpg','png','jpeg','webp'], accept_multiple_files=True)
-    if archivos_subidos:
-        lista_imagenes.extend(archivos_subidos)
-
-# --- BOTÓN DE PROCESAR ---
-if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True, type="primary"):
+if archivos_subidos and st.button("🚀 CALCULAR AHORA", type="primary", use_container_width=True):
     if not api_key:
-        st.error("⚠️ Falta API Key")
+        st.error("⚠️ Falta API Key (Ponla en el menú de la izquierda)")
     else:
         todos_los_datos = []
         barra = st.progress(0)
         status = st.empty()
-        total = len(lista_imagenes)
+        total = len(archivos_subidos)
         
-        for i, archivo in enumerate(lista_imagenes):
-            nombre = archivo.name if hasattr(archivo, 'name') else "Cámara"
+        for i, archivo in enumerate(archivos_subidos):
+            nombre = archivo.name
             status.info(f"Analizando {i+1}/{total}...")
             try:
                 img = Image.open(archivo)
@@ -170,7 +132,6 @@ if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True,
                     if len(df.columns) >= 4:
                         df.columns = ['Proveedor', 'MaterialOriginal', 'Lote', 'Cantidad'] + list(df.columns[4:])
                         df['Cantidad_Num'] = df['Cantidad'].apply(limpiar_num)
-                        
                         df['CATEGORIA'] = df.apply(categorizar_fila_inicial, axis=1)
                         
                         def corregir_lote_visual(row):
@@ -194,16 +155,15 @@ if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True,
         if todos_los_datos:
             df_final = pd.concat(todos_los_datos)
             
-            # --- 🔥 REGLA DE HIERRO DEL PREFIJO ---
+            # Regla de Hierro (A=Vial, P=Tapón)
             def imponer_categoria_por_prefijo(row):
                 lote_str = str(row['Lote']).strip().upper()
                 if lote_str.startswith('A'): return 'VIAL'
                 if lote_str.startswith('P'): return 'TAPON'
                 return row['CATEGORIA']
-
             df_final['CATEGORIA'] = df_final.apply(imponer_categoria_por_prefijo, axis=1)
-            # -------------------------------------
             
+            # Totales
             resumen_global = df_final.groupby(["CATEGORIA"])["Cantidad_Num"].sum().reset_index()
             resumen_global.columns = ["Material", "Total"]
             resumen_global['Total'] = resumen_global['Total'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
@@ -212,12 +172,11 @@ if lista_imagenes and st.button("🚀 CALCULAR AHORA", use_container_width=True,
             resumen_lotes.columns = ["Categoría", "Lote", "Total"]
             resumen_lotes['Total'] = resumen_lotes['Total'].apply(lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
             
-            st.success("✅ ¡Cálculo Completado!")
+            st.success("✅ ¡Cálculo Finalizado!")
             st.subheader("📦 TOTALES")
             st.dataframe(resumen_global, use_container_width=True)
-            
             st.subheader("📋 DESGLOSE")
             st.dataframe(resumen_lotes, use_container_width=True)
             
             csv = resumen_lotes.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Descargar CSV", csv, "produccion_real.csv", "text/csv", use_container_width=True)
+            st.download_button("📥 Descargar CSV", csv, "produccion.csv", "text/csv", use_container_width=True)
