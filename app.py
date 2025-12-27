@@ -10,7 +10,6 @@ import time
 st.set_page_config(page_title="Lector de Lotes", page_icon="🧮", layout="wide")
 
 st.title("🧮 Lector de Lotes")
-st.markdown("Sube tus fotos o hazlas directamente con el botón de abajo 👇")
 
 # --- GESTIÓN DE LA CLAVE (AUTOMÁTICA) ---
 api_key = None
@@ -189,3 +188,4 @@ if archivos_subidos and st.button("🚀 CALCULAR AHORA", type="primary", use_con
             
             csv = resumen_lotes.to_csv(index=False).encode('utf-8')
             st.download_button("📥 Descargar CSV", csv, "produccion.csv", "text/csv", use_container_width=True)
+
